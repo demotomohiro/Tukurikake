@@ -135,8 +135,22 @@ proc linkProgramObj(progObj: GLuint) =
 const triangleVSSrc = staticRead("../shaders/triangleAnim.vs").cstring
 const triangleFSSrc = staticRead("../shaders/triangle.fs").cstring
 
+const CSLocalSize = 128
+const NumParticles = 1024
+const particlePosCSSrc = (staticRead("../shaders/particlePos.cs") % [
+                                      "CSLocalSize", $CSLocalSize,
+                                      "NumParticles", $NumParticles
+                                      ]).cstring
+
 var triangleProgObj: GLuint
 var timeUniformLoc: GLint
+
+var particlePosProgObj: GLuint
+var particlePosNFrameUniformLoc: GLint
+var particlePosSSBO: GLuint
+
+const particleRenderSrc = staticRead("../shaders/particleRender.vs")
+var particleRenderProgObj: GLuint
 
 proc initScene() =
   let vso = createShader(triangleVSSrc, GL_VERTEX_SHADER)
@@ -149,6 +163,23 @@ proc initScene() =
   timeUniformLoc = glGetUniformLocation(progObj, "time")
   assert(timeUniformLoc != -1)
   triangleProgObj = progObj
+
+  let particlePosCSO =  createShader(particlePosCSSrc, GL_COMPUTE_SHADER)
+  particlePosProgObj = glCreateProgram()
+  glAttachShader(particlePosProgObj, particlePosCSO)
+  particlePosProgObj.linkProgramObj()
+  glUseProgram(particlePosProgObj)
+  particlePosNFrameUniformLoc = glGetUniformLocation(particlePosProgObj, "nframe")
+  assert(particlePosNFrameUniformLoc != -1)
+
+  let particleRenderVSO = createShader(particleRenderSrc, GL_VERTEX_SHADER)
+  particleRenderProgObj = glCreateProgram()
+  glAttachShader(particleRenderProgObj, particleRenderVSO)
+  glAttachShader(particleRenderProgObj, fso)
+  particleRenderProgObj.linkProgramObj()
+
+  glCreateBuffers(1, addr particlePosSSBO)
+  glNamedBufferData(particlePosSSBO, NumParticles * sizeof(float32) * 2, nil, GL_DYNAMIC_READ)
 
 type SampleType = float32
 
@@ -205,12 +236,23 @@ proc initSound() =
 
   playSound(hWnd)
 
-proc render() =
+proc render(nframe: uint32) =
+  glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, particlePosSSBO)
+  glUseProgram(particlePosProgObj)
+  glUniform1ui(particlePosNFrameUniformLoc, nframe)
+  const NumGroup = NumParticles div CSLocalSize
+  glDispatchCompute(GLuint(NumGroup), 1, 1)
+  glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT)
+
   glClearSttc(GL_COLOR_BUFFER_BIT or GL_DEPTH_BUFFER_BIT)
+
+  glUseProgram(particleRenderProgObj)
+  glDrawArraysSttc(GL_TRIANGLES, 0, NumParticles*3)
+
   glUseProgram(triangleProgObj)
   let pos = getSoundPosition()
   glUniform1f(timeUniformLoc, pos)
-  glDrawArraysSttc(GL_TRIANGLES, 0, 3)
+#  glDrawArraysSttc(GL_TRIANGLES, 0, 3)
 
 proc WinMainCRTStartup() {.exportc.} =
   let hdc = initScreen()
@@ -221,9 +263,11 @@ proc WinMainCRTStartup() {.exportc.} =
 
   var msg: MSG
 
+  var nframe = 0'u32
   while true:
     discard PeekMessage(addr msg, 0, 0, 0, PM_REMOVE)
-    render()
+    render(nframe)
+    inc nframe
     discard SwapBuffers(hdc)
     if GetAsyncKeyState(VK_ESCAPE) != 0 or msg.message == MM_WOM_DONE:
       ExitProcess(0)
