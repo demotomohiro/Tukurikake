@@ -21,5 +21,5 @@ void main()
 
   vec2 p = pos + vpos;
   p = p - vec2(0.5);
-  gl_Position = vec4(p, 0.0, 1.0);
+  gl_Position = vec4(p*1.5, 0.0, 1.0);
 }
