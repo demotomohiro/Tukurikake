@@ -132,8 +132,9 @@ proc linkProgramObj(progObj: GLuint) =
     if success != cast[GLint](GL_TRUE):
       quit "Failed to link shader"
 
-const triangleVSSrc = staticRead("../shaders/triangleAnim.vs").cstring
+const triangleVSSrc = staticRead("../shaders/screen.vs").cstring
 const triangleFSSrc = staticRead("../shaders/triangle.fs").cstring
+const noiseyFSSrc   = staticRead("../shaders/noisey.fs").cstring
 
 const CSLocalSize = 128
 const NumParticles = 1024
@@ -155,9 +156,11 @@ var particleRenderProgObj: GLuint
 proc initScene() =
   let vso = createShader(triangleVSSrc, GL_VERTEX_SHADER)
   let fso = createShader(triangleFSSrc, GL_FRAGMENT_SHADER)
+  let noiseyFSO = createShader(noiseyFSSrc, GL_FRAGMENT_SHADER)
   let progObj = glCreateProgram()
   glAttachShader(progObj, vso)
-  glAttachShader(progObj, fso)
+#  glAttachShader(progObj, fso)
+  glAttachShader(progObj, noiseyFSO)
   progObj.linkProgramObj()
   glUseProgram(progObj)
   timeUniformLoc = glGetUniformLocation(progObj, "time")
@@ -252,7 +255,7 @@ proc render(nframe: uint32) =
   glUseProgram(triangleProgObj)
   let pos = getSoundPosition()
   glUniform1f(timeUniformLoc, pos)
-#  glDrawArraysSttc(GL_TRIANGLES, 0, 3)
+  glDrawArraysSttc(GL_TRIANGLE_STRIP, 0, 4)
 
 proc WinMainCRTStartup() {.exportc.} =
   let hdc = initScreen()
